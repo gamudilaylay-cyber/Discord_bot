@@ -201,7 +201,8 @@ SPION_STATUS = ["Aktiv im Feld", "Unter Beobachtung", "Tarnung intakt", "Verdäc
 # ══════════════════════════════════════════════════════════════════
 
 TICKET_KATEGORIEN = [
-    discord.SelectOption(label="🆘 Support",           value="support",    description="Technische Hilfe oder ein Problem melden",        
+    discord.SelectOption(label="🆘 Support",           value="support",    description="Technische Hilfe oder ein Problem melden",        emoji="🆘"),
+    discord.SelectOption(label="📝 Bewerbung",         value="bewerbung",  description="Bewirb dich bei unserem Team",                    emoji="📝"),
     discord.SelectOption(label="🚨 Meldung",           value="meldung",    description="Spieler oder Vorfall melden",                     emoji="🚨"),
     discord.SelectOption(label="💬 Beschwerde",        value="beschwerde", description="Beschwerde über ein Mitglied einreichen",         emoji="💬"),
     discord.SelectOption(label="❓ Allgemeine Anfrage", value="anfrage",    description="Sonstige Fragen an das Team",                     emoji="❓"),

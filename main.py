@@ -10,6 +10,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 RANKING_CHANNEL_ID    = 1502347495332905111
 TICKET_PANEL_KANAL_ID = 1502350869113339984
 TEAM_ROLLE_NAME       = "{{{UCN HAUPT SERVER TEAM}}}"
+KUNDE_LOG_KANAL_ID    = 1503717981547532408
 
 intents = discord.Intents.default()
 intents.members = True
@@ -208,7 +209,6 @@ TICKET_KATEGORIEN = [
     discord.SelectOption(label="❓ Allgemeine Anfrage", value="anfrage",    description="Sonstige Fragen an das Team",                     emoji="❓"),
 ]
 
-
 TICKET_NAMEN = {
     "support":    "🆘 Support",
     "bewerbung":  "📝 Bewerbung",
@@ -236,7 +236,6 @@ class TicketSchließenView(discord.ui.View):
         )
         embed.set_footer(text=now_str())
         await interaction.response.send_message(embed=embed)
-        # Remove from open tickets registry
         for uid, cid in list(offene_tickets.items()):
             if cid == interaction.channel.id:
                 del offene_tickets[uid]
@@ -258,7 +257,6 @@ class TicketAuswahl(discord.ui.Select):
         guild = interaction.guild
         member = interaction.user
 
-        # Prüfen ob bereits ein Ticket offen ist
         if member.id in offene_tickets:
             existierender = guild.get_channel(offene_tickets[member.id])
             if existierender:
@@ -268,10 +266,8 @@ class TicketAuswahl(discord.ui.Select):
                 )
                 return
 
-        # Team-Rolle finden
         team_rolle = discord.utils.get(guild.roles, name=TEAM_ROLLE_NAME)
 
-        # Berechtigungen setzen
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False, send_messages=False),
             member: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
@@ -282,12 +278,10 @@ class TicketAuswahl(discord.ui.Select):
                 view_channel=True, send_messages=True, read_message_history=True
             )
 
-        # Ticket-Kategorie finden oder erstellen
         ticket_kat = discord.utils.get(guild.categories, name="🎫 TICKETS")
         if not ticket_kat:
             ticket_kat = await guild.create_category("🎫 TICKETS")
 
-        # Ticket-Kanal erstellen
         kanal_name = f"ticket-{member.name.lower().replace(' ', '-')}-{kategorie}"
         ticket_kanal = await guild.create_text_channel(
             name=kanal_name,
@@ -298,7 +292,6 @@ class TicketAuswahl(discord.ui.Select):
 
         offene_tickets[member.id] = ticket_kanal.id
 
-        # Willkommens-Embed im Ticket-Kanal
         embed = discord.Embed(
             title=f"🎫 {TICKET_NAMEN[kategorie]}",
             description=(
@@ -331,6 +324,61 @@ class TicketPanelView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(TicketAuswahl())
 
+# ══════════════════════════════════════════════════════════════════
+# KUNDENANFRAGE — Modal
+# ══════════════════════════════════════════════════════════════════
+
+class KundenAnfrageModal(discord.ui.Modal, title="📩 Kundenanfrage"):
+    anliegen = discord.ui.TextInput(
+        label="Was brauchst du?",
+        placeholder="Beschreibe dein Anliegen so genau wie möglich...",
+        style=discord.TextStyle.paragraph,
+        min_length=5,
+        max_length=500,
+        required=True
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        team_rolle = discord.utils.get(guild.roles, name=TEAM_ROLLE_NAME)
+        team_erwähnung = team_rolle.mention if team_rolle else f"@{TEAM_ROLLE_NAME}"
+
+        embed = discord.Embed(
+            title="📩 NEUE KUNDENANFRAGE",
+            description=(
+                f"Ein Mitglied hat eine Anfrage gestellt und wartet auf Hilfe.\n\n"
+                f"**📋 Anliegen:**\n{self.anliegen.value}"
+            ),
+            color=discord.Color.gold()
+        )
+        embed.set_thumbnail(url=interaction.user.display_avatar.url)
+        embed.add_field(name="👤 Anfrage von", value=interaction.user.mention, inline=True)
+        embed.add_field(name="📅 Zeitpunkt", value=now_str(), inline=True)
+        embed.add_field(name="📍 Kanal", value=interaction.channel.mention, inline=True)
+        embed.set_footer(text="UCN Bot — Notruf Hamburg RP")
+
+        await interaction.response.send_message(
+            content=f"📣 {team_erwähnung} — Neue Kundenanfrage!",
+            embed=embed
+        )
+
+        # Log-Kanal: per fester ID
+        log_kanal = bot.get_channel(KUNDE_LOG_KANAL_ID)
+
+        if log_kanal:
+            log_embed = discord.Embed(
+                title="📋 KUNDENANFRAGE PROTOKOLLIERT",
+                description=self.anliegen.value,
+                color=discord.Color.dark_gold(),
+                timestamp=datetime.utcnow()
+            )
+            log_embed.set_thumbnail(url=interaction.user.display_avatar.url)
+            log_embed.add_field(name="👤 Mitglied", value=f"{interaction.user.mention} (`{interaction.user}`)", inline=True)
+            log_embed.add_field(name="📅 Zeit", value=now_str(), inline=True)
+            log_embed.add_field(name="📍 Gesendet in", value=interaction.channel.mention, inline=True)
+            log_embed.set_footer(text=f"ID: {interaction.user.id} • UCN Bot")
+            await log_kanal.send(embed=log_embed)
+
 # ── Auto Ranking Task ──────────────────────────────────────────────
 @tasks.loop(hours=1)
 async def auto_ranking():
@@ -353,6 +401,28 @@ async def auto_ranking():
     embed.set_footer(text=f"Automatisches Update • {now_str()}")
     await kanal.send(embed=embed)
 
+# ── Kundenlog Reset (alle 6 Stunden) ───────────────────────────────
+@tasks.loop(hours=6)
+async def kundenlog_reset():
+    kanal = bot.get_channel(KUNDE_LOG_KANAL_ID)
+    if not kanal:
+        return
+    try:
+        await kanal.purge(limit=None)
+    except discord.Forbidden:
+        return
+    embed = discord.Embed(
+        title="🔄 LOG ERNEUERT",
+        description=(
+            "Dieser Kanal wurde automatisch zurückgesetzt.\n"
+            "Neue Kundenanfragen werden ab jetzt hier geloggt."
+        ),
+        color=discord.Color.dark_gold(),
+        timestamp=datetime.utcnow()
+    )
+    embed.set_footer(text=f"Nächste Erneuerung in 6 Stunden • UCN Bot")
+    await kanal.send(embed=embed)
+
 # ── Events ─────────────────────────────────────────────────────────
 @bot.event
 async def on_ready():
@@ -369,13 +439,21 @@ async def on_ready():
         print(f"⚠️ Sync fehlgeschlagen (Discord temporär nicht erreichbar): {e}")
     if not auto_ranking.is_running():
         auto_ranking.start()
+    if not kundenlog_reset.is_running():
+        kundenlog_reset.start()
 
 @bot.tree.interaction_check
 async def global_owner_check(interaction: discord.Interaction) -> bool:
     # Ticket-Buttons & Dropdowns dürfen alle nutzen
     if interaction.type == discord.InteractionType.component:
         return True
-    # Alle Slash-Commands: nur der Bot-Eigentümer
+    # Modal-Submissions dürfen alle nutzen (z.B. Kundenanfrage)
+    if interaction.type == discord.InteractionType.modal_submit:
+        return True
+    # Kundenanfrage-Command darf jeder nutzen
+    if interaction.command and interaction.command.name == "kunde":
+        return True
+    # Alle anderen Slash-Commands: nur der Bot-Eigentümer
     if interaction.user.id != bot.owner_id:
         await interaction.response.send_message(
             "❌ Nur der Bot-Eigentümer darf Befehle benutzen.",
@@ -418,7 +496,6 @@ async def setup_server_cmd(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
 
-    # Find the team role
     team_rolle = discord.utils.get(guild.roles, name=TEAM_ROLLE)
     if not team_rolle:
         alle_rollen = "\n".join(f"• `{r.name}`" for r in guild.roles if r.name != "@everyone")
@@ -430,7 +507,6 @@ async def setup_server_cmd(interaction: discord.Interaction):
         )
         return
 
-    # Permission overwrites: @everyone sees nothing, team role sees & writes
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(
             view_channel=False,
@@ -452,7 +528,6 @@ async def setup_server_cmd(interaction: discord.Interaction):
         )
     }
 
-    # Create or find the category
     kategorie = discord.utils.get(guild.categories, name="🕵️ UCN SYSTEM")
     if not kategorie:
         kategorie = await guild.create_category(
@@ -466,7 +541,6 @@ async def setup_server_cmd(interaction: discord.Interaction):
     for kanal_name, key, thema, erklärung in KANAL_CONFIG:
         vorhanden = discord.utils.get(guild.channels, name=kanal_name)
         if vorhanden:
-            # Update permissions on existing channel too
             await vorhanden.edit(overwrites=overwrites, topic=thema)
             kanäle[key] = vorhanden.id
             übersprungen.append(kanal_name)
@@ -481,7 +555,6 @@ async def setup_server_cmd(interaction: discord.Interaction):
         kanäle[key] = neuer_kanal.id
         erstellt.append(kanal_name)
 
-        # Post explanation message in each new channel
         erklärungs_embed = discord.Embed(
             title=f"📌 Kanal-Info — {kanal_name}",
             description=erklärung,
@@ -490,7 +563,6 @@ async def setup_server_cmd(interaction: discord.Interaction):
         erklärungs_embed.set_footer(text=f"UCN Bot • {now_str()}")
         await neuer_kanal.send(embed=erklärungs_embed)
 
-    # Summary
     embed = discord.Embed(title="⚙️ SERVER SETUP ABGESCHLOSSEN", color=discord.Color.green())
     if erstellt:
         embed.add_field(
@@ -513,7 +585,6 @@ async def setup_server_cmd(interaction: discord.Interaction):
     embed.set_footer(text=f"Setup von {interaction.user.display_name} • {now_str()}")
     await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # Welcome message in aktivität-log
     log_kanal = bot.get_channel(kanäle.get("aktivität-log"))
     if log_kanal:
         willkommen = discord.Embed(
@@ -595,7 +666,6 @@ async def ban_cmd(interaction: discord.Interaction, mitglied: discord.Member, gr
     embed.set_footer(text=f"Von {interaction.user.display_name} • {now_str()}")
     await interaction.response.send_message(embed=embed)
     await log_to("verwarnungen", embed)
-
 
 # ══════════════════════════════════════════════════════════════════
 # AKTEN & IDENTITÄT
@@ -992,6 +1062,7 @@ async def hilfe_cmd(interaction: discord.Interaction):
     embed.add_field(name="💻 __Fake RP__", value="`/hack` `/scan` `/spy`", inline=False)
     embed.add_field(name="📊 __Aktivität__", value="`/ranking` `/meinrang`", inline=False)
     embed.add_field(name="🎫 __Ticket System__", value="`/ticket_panel` — Panel im Ticket-Kanal posten", inline=False)
+    embed.add_field(name="📩 __Kundenanfrage__", value="`/kunde` — Anfrage ans Team stellen (für alle)", inline=False)
     embed.add_field(name="🎲 __Sonstiges__", value="`/würfel` `/münze` `/serverinfo`", inline=False)
     embed.set_footer(text="UCN Bot — Notruf Hamburg RP")
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -1030,6 +1101,13 @@ async def ticket_panel_cmd(interaction: discord.Interaction):
         f"✅ Ticket-Panel wurde in {kanal.mention} gepostet!",
         ephemeral=True
     )
+
+# ══════════════════════════════════════════════════════════════════
+# KUNDENANFRAGE — Command
+# ══════════════════════════════════════════════════════════════════
+@bot.tree.command(name="kunde", description="📩 Stelle eine Anfrage ans Team")
+async def kunde_cmd(interaction: discord.Interaction):
+    await interaction.response.send_modal(KundenAnfrageModal())
 
 # ── /geheimakte ────────────────────────────────────────────────────
 @bot.tree.command(name="geheimakte", description="🗂️ Zeigt die komplette Geheimakte eines Agenten")
@@ -1821,7 +1899,7 @@ async def warnung_detail_cmd(interaction: discord.Interaction, mitglied: discord
     wl = warns.get(mitglied.id, [])
     if not wl:
         await interaction.response.send_message(f"✅ {mitglied.mention} hat keine Verwarnungen.", ephemeral=True); return
-    text = "\n".join(f"`{i+1}.` {w['grund']} — von {w['von']} ({w['zeit']})" for i, w in enumerate(wl))
+    text = "\n".join(f"`{i+1}.` {w}" for i, w in enumerate(wl))
     embed = discord.Embed(title=f"⚠️ Verwarnungen: {mitglied.display_name}", description=text[:2000], color=discord.Color.orange())
     embed.set_thumbnail(url=mitglied.display_avatar.url)
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -1910,7 +1988,7 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def log_message(self, format, *args):
-        pass  # Keine HTTP-Logs in der Konsole
+        pass
 
 def webserver_starten():
     port = int(os.environ.get("PORT", 8080))

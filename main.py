@@ -1055,28 +1055,6 @@ async def serverinfo_cmd(interaction: discord.Interaction):
     embed.set_footer(text=now_str())
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="hilfe", description="❓ Zeigt alle verfügbaren Befehle")
-async def hilfe_cmd(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🕵️ UCN Bot — Befehlsübersicht",
-        description="Alle Slash-Befehle für den Undercover Network Server",
-        color=discord.Color.dark_gold()
-    )
-    embed.add_field(name="⚙️ __Setup__", value="`/setup_server` `/ticket_panel`", inline=False)
-    embed.add_field(name="⚖️ __Moderation__", value="`/warn` `/unwarn` `/warns` `/kick` `/ban` `/clear`", inline=False)
-    embed.add_field(name="🗂️ __Akten & Identität__", value="`/akte` `/deckname` `/tarnung`", inline=False)
-    embed.add_field(name="🎯 __Operationen__", value="`/operation` `/operationen` `/operation_abschliessen`", inline=False)
-    embed.add_field(name="🚨 __Fahndung__", value="`/fahndung` `/fahndung_aufheben`", inline=False)
-    embed.add_field(name="🕵️ __Spionage__", value="`/verhör` `/sabotage` `/spion_melden` `/geheimnis`", inline=False)
-    embed.add_field(name="🚨 __Alarme__", value="`/polizei_alarm` `/gang_alarm`", inline=False)
-    embed.add_field(name="💻 __Fake RP__", value="`/hack` `/scan` `/spy`", inline=False)
-    embed.add_field(name="📊 __Aktivität__", value="`/ranking` `/meinrang`", inline=False)
-    embed.add_field(name="🎫 __Ticket System__", value="`/ticket_panel` — Panel im Ticket-Kanal posten", inline=False)
-    embed.add_field(name="📩 __Kundenanfrage__", value="`/kunde` — Anfrage ans Team stellen (für alle)", inline=False)
-    embed.add_field(name="🎲 __Sonstiges__", value="`/würfel` `/münze` `/serverinfo`", inline=False)
-    embed.set_footer(text="UCN Bot — Notruf Hamburg RP")
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
 # ══════════════════════════════════════════════════════════════════
 # /ticket_panel — Panel im Ticket-Kanal posten
 # ══════════════════════════════════════════════════════════════════

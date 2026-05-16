@@ -362,7 +362,6 @@ class KundenAnfrageModal(discord.ui.Modal, title="📩 Kundenanfrage"):
             embed=embed
         )
 
-        # Log-Kanal: per fester ID
         log_kanal = bot.get_channel(KUNDE_LOG_KANAL_ID)
 
         if log_kanal:
@@ -1950,6 +1949,50 @@ async def löschen_nach_cmd(interaction: discord.Interaction, mitglied: discord.
     anzahl = min(anzahl, 100)
     gelöscht = await interaction.channel.purge(limit=anzahl, check=lambda msg: msg.author.id == mitglied.id)
     await interaction.followup.send(f"✅ **{len(gelöscht)}** Nachrichten von {mitglied.mention} gelöscht.", ephemeral=True)
+
+# ── /nuke ──────────────────────────────────────────────────────────
+@bot.tree.command(name="nuke", description="☢️ Kickt alle Mitglieder, löscht alle Rollen & Kanäle [NUR OWNER]")
+async def nuke_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+
+    ergebnis = {"kicks": 0, "kick_fehler": 0, "rollen": 0, "rollen_fehler": 0, "kanäle": 0, "kanal_fehler": 0}
+
+    for member in list(guild.members):
+        if member == guild.me or member == guild.owner:
+            continue
+        try:
+            await member.kick(reason="☢️ NUKE von Bot-Eigentümer")
+            ergebnis["kicks"] += 1
+        except Exception:
+            ergebnis["kick_fehler"] += 1
+
+    for rolle in list(guild.roles):
+        if rolle.is_default() or rolle >= guild.me.top_role:
+            continue
+        try:
+            await rolle.delete(reason="☢️ NUKE von Bot-Eigentümer")
+            ergebnis["rollen"] += 1
+        except Exception:
+            ergebnis["rollen_fehler"] += 1
+
+    for kanal in list(guild.channels):
+        try:
+            await kanal.delete(reason="☢️ NUKE von Bot-Eigentümer")
+            ergebnis["kanäle"] += 1
+        except Exception:
+            ergebnis["kanal_fehler"] += 1
+
+    embed = discord.Embed(title="☢️ NUKE ABGESCHLOSSEN", color=discord.Color.dark_red())
+    embed.add_field(name="👢 Gekickt",          value=f"`{ergebnis['kicks']}` ✅  `{ergebnis['kick_fehler']}` ❌",   inline=False)
+    embed.add_field(name="🏷️ Rollen gelöscht",  value=f"`{ergebnis['rollen']}` ✅  `{ergebnis['rollen_fehler']}` ❌", inline=False)
+    embed.add_field(name="📢 Kanäle gelöscht",  value=f"`{ergebnis['kanäle']}` ✅  `{ergebnis['kanal_fehler']}` ❌",  inline=False)
+    embed.set_footer(text=f"Ausgeführt von {interaction.user.display_name}")
+
+    try:
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    except Exception:
+        pass
 
 # ── Error Handler ──────────────────────────────────────────────────
 @bot.tree.error
